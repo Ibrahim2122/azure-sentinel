@@ -88,9 +88,9 @@ File: [`queries/ssh_burst_correlated_vm_power.kql`](queries/ssh_burst_correlated
 
 Screenshots are under `/screenshots`:
 
-- `screenshots/incidents/*.png`
-- `screenshots/alerts/*.png`
-- `screenshots/playbook/*.png`
+- `screenshots/incidents/incident.png`
+- `screenshots/alerts/alerts.png`
+- `screenshots/playbooks/run_history.png`
 
 ---
 
@@ -98,14 +98,6 @@ Screenshots are under `/screenshots`:
 
 - This repository is a record of **what I built and verified**. It’s not a step‑by‑step guide; however, the KQL and playbook export (if shared) provide enough context to understand the implementation details.
 - Resources were kept within free/low‑cost tiers; the VM was deallocated when idle.
-
----
-
-## Resume/LinkedIn blurb
-
-> Built Microsoft Sentinel detections for SSH brute force (**≥3 in 5 min**) and correlation with VM power operations; authored KQL, configured Analytics rules with entity mapping, and automated incident response with a Logic Apps playbook (SOAR). Validated end‑to‑end using Syslog and Azure Activity in Log Analytics.
-
-**Keywords:** Microsoft Sentinel, KQL, Azure Security, SIEM, SOAR, Logic Apps, Azure Monitor, Log Analytics, Syslog, Azure Activity, Incident Response, Detection Engineering
 
 ---
 
