@@ -10,15 +10,14 @@ I built a one‑day, cost‑free lab that demonstrates **cloud security monitori
 
 ```mermaid
 flowchart LR
-  A[Attacker (Mac zsh)] --> B[Linux VM]
-  A -. "sshpass & expect" .- B
-  B --> C[AMA/DCR → Log Analytics Workspace]
-  D[Azure Activity (Administrative)] --> C
+  A[macOS client] --> B[Linux VM]
+  B --> C[Log Analytics Workspace]
+  D[Azure Activity] --> C
   C --> E[Microsoft Sentinel]
   E --> F[Incidents]
   F --> G[Automation Rule]
-  G --> H[Logic App Playbook (Notify)]
-  H --> I[Email/Teams/Webhook]
+  G --> H[Logic App Playbook]
+  H --> I[Notification]
 ```
 
 **Data sources:** `Syslog` (Linux auth/authpriv) and `AzureActivity` (Administrative) into **Log Analytics Workspace (LAW)** via **AMA/DCR**.  
@@ -88,6 +87,7 @@ File: [`queries/ssh_burst_correlated_vm_power.kql`](queries/ssh_burst_correlated
 4. **SOAR**: my automation rule invoked the **PB‑Notify‑SSHBruteForce** Logic App; run history showed incident context.
 
 Screenshots are under `/screenshots`:
+
 - `screenshots/incidents/*.png`
 - `screenshots/alerts/*.png`
 - `screenshots/playbook/*.png`
