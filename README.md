@@ -1,43 +1,41 @@
 # Azure Sentinel: SSH Brute Force Detections + VM Power Correlation (KQL, SIEM, SOAR)
 
-> **Tech stack:** Microsoft Sentinel (SIEM), Microsoft Defender, Azure Monitor / Log Analytics, KQL, Logic Apps (SOAR), Linux (Ubuntu), Syslog (auth/authpriv), Azure Activity, AMA/DCR
+> **Stack used:** Microsoft Sentinel (SIEM), Microsoft Defender, Azure Monitor / Log Analytics, KQL, Logic Apps (SOAR), Linux (Ubuntu), Syslog (auth/authpriv), Azure Activity, AMA/DCR
 
-[![Made with Microsoft Sentinel](https://img.shields.io/badge/Microsoft%20Sentinel-SIEM%2FSOAR-blue)](#)
-[![KQL](https://img.shields.io/badge/KQL-queries-success)](#)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-This repo packages a one-day, **cost-free** hands-on project that demonstrates **cloud security monitoring** on Azure with **Microsoft Sentinel** and **KQL**. It includes two working detections, incident entity mapping, and a **SOAR playbook** that notifies on incidents.
+I built a one‑day, cost‑free lab that demonstrates **cloud security monitoring** on Azure with **Microsoft Sentinel** and **KQL**. The project includes two detections, incident entity mapping, and a **SOAR playbook** that notifies on incidents. This repo captures my queries, scripts used for signal generation, and evidence (screenshots) of the end‑to‑end flow.
 
 ---
 
-## What you’ll build (highlights)
-
-- **KQL detections**
-  - `SSH failed login bursts` (≥5 failures in 5 minutes)
-  - `SSH burst + VM power operation correlation` (restart/deallocate within ±30 min)
-- **Sentinel Analytics rules** with **entity mapping** (IP, Host, Account)
-- **SOAR Automation**: Logic App playbook to notify when incidents are created
-- **Attack simulation** scripts to generate signals (zsh/expect)
-- **Portfolio-ready docs and screenshots**
-
----
-
-## Architecture
+## Architecture I used
 
 ```mermaid
 flowchart LR
-  A[Attacker (Mac zsh)] -->|sshpass / expect| B[Linux VM]
-  B -->|Syslog auth/authpriv| C[AMA/DCR -> Log Analytics Workspace]
+  A[Attacker (Mac zsh)] --> B[Linux VM]
+  A -. "sshpass & expect" .- B
+  B --> C[AMA/DCR → Log Analytics Workspace]
   D[Azure Activity (Administrative)] --> C
-  C -->|KQL queries| E[Microsoft Sentinel]
-  E -->|Analytics Rules| F[Incidents]
-  F -->|Automation Rule| G[Logic App Playbook (Notify)]
-  G --> H[Email/Teams/Webhook]
+  C --> E[Microsoft Sentinel]
+  E --> F[Incidents]
+  F --> G[Automation Rule]
+  G --> H[Logic App Playbook (Notify)]
+  H --> I[Email/Teams/Webhook]
 ```
 
 **Data sources:** `Syslog` (Linux auth/authpriv) and `AzureActivity` (Administrative) into **Log Analytics Workspace (LAW)** via **AMA/DCR**.  
 **Detection:** KQL scheduled analytics rules in **Sentinel**.  
 **Response:** **Logic App** playbook invoked by **Automation Rule** on incident creation.
+
+---
+
+## What I built
+
+- **KQL detections**
+  - **SSH failed login bursts** — triggers on **≥3** failures in a **5‑minute** window; extracts client IP; maps Host + IP.
+  - **SSH burst + VM power correlation** — checks for VM restart/deallocate near an SSH burst (±30 minutes); normalizes VM names via `Heartbeat`; maps Host + IP (+ optional Account from Azure Activity).
+- **Sentinel Analytics rules** with **entity mapping** (IP, Host, Account).
+- **SOAR Automation** (Logic App playbook) to notify when incidents are created.
+- **Signal generation** via short zsh/expect scripts to simulate SSH failures.
+- **Validation evidence**: incidents, alerts, and playbook run screenshots included.
 
 ---
 
@@ -51,137 +49,66 @@ azure-sentinel-kql-ssh/
 ├─ queries/
 │  ├─ ssh_failed_bursts.kql
 │  └─ ssh_burst_correlated_vm_power.kql
-├─ scripts/
+├─ scripts/                # small utilities I used to generate signals in my lab
 │  ├─ simulate_ssh_bruteforce.sh
 │  └─ simulate_ssh_bruteforce_expect.exp
 ├─ playbooks/
-│  ├─ PB-Notify-SSHBruteForce.sample.json   # optional: example skeleton
-│  └─ README.md                              # export/import tips
-├─ screenshots/
-│  ├─ incidents/...
-│  ├─ alerts/...
-│  └─ playbook/...
+│  ├─ PB-Notify-SSHBruteForce.sample.json   # placeholder skeleton; I exported my real playbook to JSON
+│  └─ README.md
+├─ screenshots/            # evidence of detections/incidents/playbook runs
 └─ .github/workflows/
-   └─ basic-lint.yml                         # optional repo hygiene
+   └─ basic-lint.yml
 ```
 
 ---
 
-## Prerequisites (what I used)
+## Detections I wrote (KQL)
 
-- Azure subscription with **Microsoft Sentinel** enabled on a **Log Analytics Workspace**
-- One **Linux VM** (Ubuntu/Debian) with `syslog` forwarding (**auth**, **authpriv**)
-- **AMA/DCR** configured to send Syslog to the LAW
-- **Azure Activity** (Administrative) exported to the same LAW
+### SSH Failed Login Bursts (≥3 in 5 minutes)
 
-> **Tip:** Keep resources in the same region and stop/deallocate the VM when not testing to remain in free tier.
-
----
-
-## KQL Detections
-
-### 1) SSH Failed Login Bursts
-
-- Triggers on ≥5 failed SSH logins within 5 minutes from a single IP
-- Extracts client IP from `Syslog` message
-- Maps entities: **Host**, **IP**
+- Detects rapid SSH authentication failures from a single source IP against the VM.
+- Extracts the client IP from Syslog and emits Host/IP entities for Sentinel.
 
 File: [`queries/ssh_failed_bursts.kql`](queries/ssh_failed_bursts.kql)
 
-### 2) SSH Burst Correlated with VM Power Ops
+### SSH Burst Correlated with VM Power Operations
 
-- If an SSH failure burst occurs, checks whether the **VM was restarted/deallocated** within ±30 minutes
-- Normalizes VM names via `Heartbeat`
-- Maps entities: **Host**, **IP**, **Account** (optional from Azure Activity Caller)
+- Associates an SSH failure burst with **VM restart/deallocate** operations within ±30 minutes.
+- Uses `Heartbeat` for simple host normalization and maps Host/IP (+ optional `Caller`).
 
 File: [`queries/ssh_burst_correlated_vm_power.kql`](queries/ssh_burst_correlated_vm_power.kql)
 
 ---
 
-## Sentinel: Analytics Rules
+## Validation (what I confirmed)
 
-**Schedule suggestion:** run every 5 minutes, lookup 10 minutes (rule 1) / 60 minutes (rule 2).  
-**Alert threshold:** trigger when results ≥ 3.  
-**Entity mapping:** IP → `SourceIp`, Host → `HostName`/`Computer`, Account → `Caller` (rule 2).
+1. **LAW ingestion**: `Syslog` showed failed SSH attempts; `AzureActivity` captured restart/deallocate operations.
+2. **Analytics Rules**: scheduled every 5 minutes; lookup 10–60 minutes depending on rule; entity mapping populated IP/Host (and Account when available).
+3. **Incidents**: created with **High** severity during tests; entities accurately reflected attacker IP and VM.
+4. **SOAR**: my automation rule invoked the **PB‑Notify‑SSHBruteForce** Logic App; run history showed incident context.
 
-> You can paste each KQL file into a **Scheduled query rule** wizard in Sentinel. For portability, keep the KQL here and optionally export rules from the portal into `playbooks/` or an `arm/` folder later.
-
----
-
-## SOAR: Playbook (Logic App)
-
-- Name: `PB-Notify-SSHBruteForce`
-- Trigger: _When a response to an Azure Sentinel alert is triggered_
-- Actions: Notify (email/Teams/webhook). Include incident title, severity, entities, and the query link.
-
-You can export your working playbook from the portal and save it to `playbooks/` (see `playbooks/README.md`).
+Screenshots are under `/screenshots`:
+- `screenshots/incidents/*.png`
+- `screenshots/alerts/*.png`
+- `screenshots/playbook/*.png`
 
 ---
 
-## Simulate the Attack (from macOS zsh)
+## Notes
 
-> ⚠️ For **lab/demo** use only, against your own VM. Use a non-production, throwaway user.
-
-- `scripts/simulate_ssh_bruteforce.sh` (uses `sshpass`)  
-- `scripts/simulate_ssh_bruteforce_expect.exp` (Expect alternative)
-
-These try multiple wrong passwords quickly to generate **Syslog** failures.
-
----
-
-## Validation
-
-1. **LAW**: verify `Syslog` shows failed SSH attempts; `AzureActivity` shows restart/deallocate.
-2. **Sentinel**: confirm **Analytics rules** fire and **entities** are mapped.
-3. **Incidents**: severity set to **High**, **Automation rule** calls playbook.
-4. **Playbook runs**: visible under **Runs history** with payload including IP + VM.
-
-Add **screenshots** to `screenshots/` and reference them below.
-
----
-
-## Screenshots (add yours)
-
-- Incidents list: `screenshots/incidents/incidents_list.png`
-- Incident details: `screenshots/incidents/incident_details.png`
-- Alert rule hit: `screenshots/alerts/alert_results.png`
-- Playbook run: `screenshots/playbook/run_history.png`
-
----
-
-## Cost & Cleanup
-
-- Stop/deallocate the VM when idle.  
-- Remove Analytics rules or lower frequency after demo.  
-- Delete the resource group to avoid residual costs.
-
----
-
-## Troubleshooting
-
-- **No Syslog?** Confirm AMA/DCR includes `auth,authpriv` and VM is linked.
-- **No AzureActivity?** Ensure export of `Administrative` category to LAW.
-- **Entities not mapped?** Check the rule’s **Entity mapping** section matches column names.
-- **Playbook not running?** Verify **Automation rule** is set to run the playbook on incident creation.
+- This repository is a record of **what I built and verified**. It’s not a step‑by‑step guide; however, the KQL and playbook export (if shared) provide enough context to understand the implementation details.
+- Resources were kept within free/low‑cost tiers; the VM was deallocated when idle.
 
 ---
 
 ## Resume/LinkedIn blurb
 
-> Built Microsoft Sentinel detections for SSH brute force and correlation with VM power operations; authored KQL, configured Analytics rules with entity mapping, and automated incident response with a Logic Apps playbook (SOAR). Verified end‑to‑end in Azure with Syslog + Azure Activity.
+> Built Microsoft Sentinel detections for SSH brute force (**≥3 in 5 min**) and correlation with VM power operations; authored KQL, configured Analytics rules with entity mapping, and automated incident response with a Logic Apps playbook (SOAR). Validated end‑to‑end using Syslog and Azure Activity in Log Analytics.
 
 **Keywords:** Microsoft Sentinel, KQL, Azure Security, SIEM, SOAR, Logic Apps, Azure Monitor, Log Analytics, Syslog, Azure Activity, Incident Response, Detection Engineering
 
 ---
 
-## How to use this repo
-
-1. Clone, add your screenshots to `/screenshots`.
-2. (Optional) Export your **Analytics rules** and **Playbook** and place JSON into `/playbooks`.
-3. Push to your GitHub and link it on your resume.
-
----
-
-## Attribution & License
+## License
 
 MIT — see [LICENSE](LICENSE).
