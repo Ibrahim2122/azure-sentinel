@@ -1,0 +1,27 @@
+#!/usr/bin/env expect
+# Simulate SSH brute force using Expect (lab/demo only)
+# Usage: ./simulate_ssh_bruteforce_expect.exp <user> <host> <port:optional> <attempts:optional>
+set timeout 5
+if {$argc < 2} {
+  puts "Usage: $argv0 <user> <host> [port=22] [attempts=30]"
+  exit 1
+}
+set user [lindex $argv 0]
+set host [lindex $argv 1]
+set port [lindex $argv 2]
+if {$port eq ""} { set port 22 }
+set attempts [lindex $argv 3]
+if {$attempts eq ""} { set attempts 30 }
+
+for {set i 1} {$i <= $attempts} {incr i} {
+  spawn ssh -o StrictHostKeyChecking=no -p $port $user@$host
+  expect {
+    "assword:" {
+      send "WrongPass$i\r"
+      exp_continue
+    }
+    timeout { }
+    eof { }
+  }
+}
+puts "Done. Generated ~$attempts failed SSH attempts against $host."

@@ -1,0 +1,31 @@
+// SSH Burst Correlated with VM Power Operations (restart/deallocate within ±30m)
+let ssh_window = 5m;
+let activity_window = 60m;
+let ssh_bursts =
+Syslog
+| where TimeGenerated >= ago(activity_window)
+| where Facility in ("auth", "authpriv")
+| where ProcessName =~ "sshd" and SyslogMessage has_any ("Failed password", "authentication failure")
+| extend SrcIp = extract(@"(?:(?:from|rhost=)\s*)(\d{1,3}(?:\.\d{1,3}){3})", 1, SyslogMessage)
+| where isnotempty(SrcIp)
+| summarize Failures=count(), BurstStart=min(TimeGenerated), BurstEnd=max(TimeGenerated) by bin(TimeGenerated, ssh_window), Computer, SrcIp
+| where Failures >= 5
+| project HostName=tostring(Computer), SrcIp, Failures, BurstStart, BurstEnd;
+let vm_ops =
+AzureActivity
+| where TimeGenerated between (ago(activity_window) .. now())
+| where CategoryValue =~ "Administrative"
+| where OperationNameValue has_any ("start", "deallocate", "restart", "powerOff", "power on", "write")
+| project ActivityTime=TimeGenerated, OperationNameValue, Caller, Resource=tostring(ResourceId), CorrelationId;
+let normalized =
+Heartbeat
+| where TimeGenerated >= ago(activity_window)
+| summarize arg_max(TimeGenerated, Computer) by Computer
+| project HB_Host=Computer;
+ssh_bursts
+| join kind=leftouter normalized on $left.HostName == $right.HB_Host
+| join kind=leftouter (
+    vm_ops
+) on $left.HostName contains extract(@"providers/Microsoft.Compute/virtualMachines/([^/]+)$", 1, Resource)
+| where ActivityTime between (BurstStart - 30m .. BurstEnd + 30m)
+| project TimeGenerated=coalesce(ActivityTime, BurstEnd), HostName, SrcIp, Failures, BurstStart, BurstEnd, OperationNameValue, Caller, CorrelationId
